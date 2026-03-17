@@ -1,0 +1,270 @@
+"""
+AI 智能路由引擎 — LLM Tool Calling 驱动的意图识别与引擎调度
+
+核心设计：
+  1. 定义 5 个 Tool（支护/通风/循环计算 + 规则匹配 + 文档生成）
+  2. LLM 解析用户自然语言 → 决定调用哪个工具 + 提取参数
+  3. 执行工具 → 将结果回传 LLM → 生成中文解读
+  4. 支持 SSE 流式输出
+
+架构红线：
+  - 意图路由由 LLM Tool Calling 驱动，严禁 if-else 硬编码
+  - 单向流式输出用 SSE
+  - API Key 存后端 .env，严禁暴露给前端
+"""
+import json
+import os
+from typing import AsyncGenerator
+
+from openai import AsyncOpenAI
+
+from app.schemas.calc import SupportCalcInput
+from app.schemas.vent import VentCalcInput
+from app.schemas.cycle import CycleCalcInput
+from app.services.calc_engine import SupportCalcEngine
+from app.services.vent_engine import VentCalcEngine
+from app.services.cycle_engine import CycleCalcEngine
+
+# 系统提示词 — 定义 AI 角色
+SYSTEM_PROMPT = """你是"掘进智脑"——一个煤矿掘进工作面作业规程智能生成助手。
+
+你的能力：
+1. **支护计算** — 根据围岩级别、断面尺寸计算锚杆锚固力、最大间距、安全系数等
+2. **通风计算** — 根据瓦斯涌出量、断面面积计算需风量，自动选型局扇
+3. **循环作业计算** — 根据掘进方式计算循环进尺、日/月进尺
+4. **规则匹配** — 根据项目参数匹配适用的安全技术规则
+5. **文档生成** — 一键生成完整的掘进作业规程 Word 文档
+
+沟通规则：
+- 使用专业但易懂的中文回答
+- 如果用户提供了参数，直接调用对应工具计算
+- 如果参数不完整，请友善地询问缺失项
+- 计算结果需要解读关键数据，特别是合规预警要重点标红提示
+- 对危险操作（如超限参数）要主动警告
+"""
+
+# ===== 工具定义（OpenAI Function Calling 格式） =====
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "calc_support",
+            "description": "支护计算 — 根据围岩条件和断面参数,计算锚杆锚固力、最大间距、安全系数等。当用户询问锚杆、锚索、支护参数时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rock_class": {"type": "string", "enum": ["I","II","III","IV","V"], "description": "围岩级别"},
+                    "section_form": {"type": "string", "enum": ["矩形","拱形","梯形"], "description": "断面形式"},
+                    "section_width": {"type": "number", "description": "断面宽度(m)"},
+                    "section_height": {"type": "number", "description": "断面高度(m)"},
+                    "bolt_spacing": {"type": "number", "description": "锚杆间距(mm),可选", "default": 1000},
+                    "cable_count": {"type": "integer", "description": "锚索数量,可选", "default": 3},
+                },
+                "required": ["rock_class", "section_form", "section_width", "section_height"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calc_ventilation",
+            "description": "通风计算 — 三法求需风量(瓦斯涌出法/人数法/炸药法) + 局扇选型。当用户询问通风、需风量、局扇时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "gas_emission": {"type": "number", "description": "瓦斯绝对涌出量(m³/min)"},
+                    "gas_level": {"type": "string", "enum": ["低瓦斯","高瓦斯","突出"], "description": "瓦斯等级"},
+                    "section_area": {"type": "number", "description": "巷道断面积(m²)"},
+                    "excavation_length": {"type": "number", "description": "掘进长度(m)"},
+                    "max_workers": {"type": "integer", "description": "最多同时工作人数", "default": 25},
+                    "design_air_volume": {"type": "number", "description": "设计风量(m³/min),可选"},
+                },
+                "required": ["gas_emission", "gas_level", "section_area", "excavation_length"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calc_cycle",
+            "description": "循环作业计算 — 工序编排 + 日/月进尺 + 正规循环率。当用户询问掘进速度、月进尺、循环时间时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dig_method": {"type": "string", "enum": ["钻爆法","综掘"], "description": "掘进方式"},
+                    "hole_depth": {"type": "number", "description": "炮眼深度(m),钻爆法用", "default": 2.0},
+                    "cut_depth": {"type": "number", "description": "截割深度(m),综掘用", "default": 0.8},
+                    "shifts_per_day": {"type": "integer", "description": "日班次", "default": 3},
+                    "design_monthly_advance": {"type": "number", "description": "设计月进尺(m),用于校核"},
+                },
+                "required": ["dig_method"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recommendations",
+            "description": "规程建议 — 根据工程条件给出安全技术措施建议。当用户询问安全措施、注意事项、操作规程时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rock_class": {"type": "string", "description": "围岩级别"},
+                    "gas_level": {"type": "string", "description": "瓦斯等级"},
+                    "dig_method": {"type": "string", "description": "掘进方式"},
+                    "question": {"type": "string", "description": "用户具体问题"},
+                },
+                "required": ["question"],
+            },
+        },
+    },
+]
+
+
+class AIRouter:
+    """AI 智能路由引擎"""
+
+    def __init__(self):
+        # 优先使用 OpenAI，兼容 Gemini（通过 OpenAI 兼容 API）
+        api_key = os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+        base_url = os.getenv("OPENAI_BASE_URL")  # 支持自定义 base_url
+        self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
+
+        client_kwargs = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+
+        self.client = AsyncOpenAI(**client_kwargs)
+
+    def _execute_tool(self, name: str, args: dict) -> dict:
+        """执行工具调用（同步，因为计算引擎是纯函数）"""
+        if name == "calc_support":
+            inp = SupportCalcInput(**args)
+            r = SupportCalcEngine.calculate(inp)
+            return r.model_dump()
+
+        elif name == "calc_ventilation":
+            inp = VentCalcInput(**args)
+            r = VentCalcEngine.calculate(inp)
+            return r.model_dump()
+
+        elif name == "calc_cycle":
+            inp = CycleCalcInput(**args)
+            r = CycleCalcEngine.calculate(inp)
+            return r.model_dump()
+
+        elif name == "get_recommendations":
+            # 返回参数本身让 LLM 基于知识生成建议
+            return {"status": "ok", "context": args}
+
+        else:
+            return {"error": f"未知工具: {name}"}
+
+    async def chat(self, user_message: str, history: list[dict] | None = None) -> str:
+        """非流式对话（完整响应）"""
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": user_message})
+
+        # 第一轮：LLM 决定是否调用工具
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            tools=TOOLS,
+            tool_choice="auto",
+        )
+
+        msg = response.choices[0].message
+
+        # 如果有工具调用
+        if msg.tool_calls:
+            messages.append(msg.model_dump())
+
+            for tc in msg.tool_calls:
+                fn_name = tc.function.name
+                fn_args = json.loads(tc.function.arguments)
+                result = self._execute_tool(fn_name, fn_args)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+
+            # 第二轮：LLM 解读工具结果
+            response2 = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+            )
+            return response2.choices[0].message.content or ""
+
+        return msg.content or ""
+
+    async def chat_stream(
+        self, user_message: str, history: list[dict] | None = None
+    ) -> AsyncGenerator[str, None]:
+        """SSE 流式对话"""
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": user_message})
+
+        # 第一轮：检测工具调用（非流式，以获取完整 tool_calls）
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            tools=TOOLS,
+            tool_choice="auto",
+        )
+
+        msg = response.choices[0].message
+
+        if msg.tool_calls:
+            # 有工具调用 → 先执行，再流式输出解读
+            messages.append(msg.model_dump())
+            tool_results = []
+
+            for tc in msg.tool_calls:
+                fn_name = tc.function.name
+                fn_args = json.loads(tc.function.arguments)
+
+                # 通知前端正在调用工具
+                yield f"data: {json.dumps({'type': 'tool_start', 'name': fn_name, 'args': fn_args}, ensure_ascii=False)}\n\n"
+
+                result = self._execute_tool(fn_name, fn_args)
+                tool_results.append({"name": fn_name, "result": result})
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+
+                yield f"data: {json.dumps({'type': 'tool_done', 'name': fn_name}, ensure_ascii=False)}\n\n"
+
+            # 第二轮：流式输出 LLM 解读
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+            )
+
+            async for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    yield f"data: {json.dumps({'type': 'text', 'content': delta.content}, ensure_ascii=False)}\n\n"
+
+        else:
+            # 无工具调用 → 直接流式输出
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    yield f"data: {json.dumps({'type': 'text', 'content': delta.content}, ensure_ascii=False)}\n\n"
+
+        yield "data: [DONE]\n\n"
