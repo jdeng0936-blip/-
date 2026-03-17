@@ -1,0 +1,45 @@
+# Docker Compose 编排 — 掘进工作面规程智能生成平台
+# 一键启动：docker compose up -d
+
+services:
+  # --- PostgreSQL 16 + pgvector ---
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: excavation-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: excavation_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  # --- Redis Stack ---
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: excavation-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # --- 后端 API（开发模式直接用 uvicorn，生产用此容器） ---
+  # api:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: excavation-api
+  #   restart: unless-stopped
+  #   env_file: ./backend/.env
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - postgres
+  #     - redis
+
+volumes:
+  pg_data:
+  redis_data:
