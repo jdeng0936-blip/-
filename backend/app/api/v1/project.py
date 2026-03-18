@@ -24,7 +24,7 @@ async def list_projects(
     """获取当前租户的项目列表"""
     svc = ProjectService(session)
     projects = await svc.list_projects(tenant_id)
-    return ApiResponse(data=[ProjectOut.model_validate(p) for p in projects])
+    return ApiResponse(data=[ProjectOut.from_orm_with_mine(p) for p in projects])
 
 
 @router.get("/{project_id}", response_model=ApiResponse[ProjectOut])
@@ -38,7 +38,7 @@ async def get_project(
     project = await svc.get_project(project_id, tenant_id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
-    return ApiResponse(data=ProjectOut.model_validate(project))
+    return ApiResponse(data=ProjectOut.from_orm_with_mine(project))
 
 
 @router.post("", response_model=ApiResponse[ProjectOut])
@@ -52,7 +52,7 @@ async def create_project(
     user_id = int(payload.get("sub", 0))
     svc = ProjectService(session)
     project = await svc.create_project(body, tenant_id, user_id)
-    return ApiResponse(data=ProjectOut.model_validate(project))
+    return ApiResponse(data=ProjectOut.from_orm_with_mine(project))
 
 
 @router.put("/{project_id}", response_model=ApiResponse[ProjectOut])
@@ -67,7 +67,7 @@ async def update_project(
     project = await svc.update_project(project_id, tenant_id, body)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
-    return ApiResponse(data=ProjectOut.model_validate(project))
+    return ApiResponse(data=ProjectOut.from_orm_with_mine(project))
 
 
 @router.delete("/{project_id}", response_model=ApiResponse)

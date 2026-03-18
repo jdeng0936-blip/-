@@ -44,9 +44,11 @@ class ProjectParamsOut(ProjectParamsCreate):
 
 class ProjectCreate(BaseModel):
     """创建项目"""
-    mine_id: int = Field(description="矿井ID")
+    mine_id: Optional[int] = Field(1, description="矿井ID（可选，默认1）")
+    mine_name: Optional[str] = Field(None, description="矿井名称（前端兼容字段）")
     face_name: str = Field(min_length=1, max_length=100, description="工作面名称")
     description: Optional[str] = Field(None, description="备注说明")
+    dig_method: Optional[str] = Field(None, description="掘进方式（前端兼容字段）")
     params: Optional[ProjectParamsCreate] = Field(None, description="初始参数（可选）")
 
 
@@ -61,6 +63,7 @@ class ProjectOut(BaseModel):
     """项目输出"""
     id: int
     mine_id: int
+    mine_name: Optional[str] = None
     face_name: str
     status: str
     description: Optional[str]
@@ -71,3 +74,12 @@ class ProjectOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_orm_with_mine(cls, project) -> "ProjectOut":
+        """从 ORM 对象构造，提取关联矿井名称"""
+        data = cls.model_validate(project)
+        # 从 project.mine relationship 获取 mine_name
+        if hasattr(project, 'mine') and project.mine:
+            data.mine_name = project.mine.name
+        return data

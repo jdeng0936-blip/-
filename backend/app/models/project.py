@@ -28,8 +28,12 @@ class Project(AuditMixin, Base):
     )
     description: Mapped[str] = mapped_column(Text, nullable=True, comment="备注说明")
 
-    params = relationship("ProjectParams", back_populates="project", uselist=False, lazy="selectin")
-    documents = relationship("GeneratedDoc", back_populates="project", lazy="selectin")
+    # 关联矿井（selectin 预加载，查询时自动获取矿井名称）
+    mine = relationship("SysMine", lazy="selectin", foreign_keys=[mine_id])
+    params = relationship("ProjectParams", back_populates="project", uselist=False, lazy="selectin",
+                           cascade="all, delete-orphan", passive_deletes=True)
+    documents = relationship("GeneratedDoc", back_populates="project", lazy="selectin",
+                             cascade="all, delete-orphan", passive_deletes=True)
 
 
 class ProjectParams(AuditMixin, Base):

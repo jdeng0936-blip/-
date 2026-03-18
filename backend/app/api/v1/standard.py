@@ -27,6 +27,7 @@ router = APIRouter(prefix="/standards", tags=["标准库"])
 # ========== 规范文档 ==========
 
 @router.get("", response_model=ApiResponse[PaginatedData[StdDocumentOut]])
+@router.get("/documents", response_model=ApiResponse[PaginatedData[StdDocumentOut]], include_in_schema=False)
 async def list_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -52,6 +53,7 @@ async def list_documents(
 
 
 @router.post("", response_model=ApiResponse[StdDocumentOut])
+@router.post("/documents", response_model=ApiResponse[StdDocumentOut], include_in_schema=False)
 async def create_document(
     body: StdDocumentCreate,
     payload: dict = Depends(get_current_user_payload),
@@ -68,6 +70,7 @@ async def create_document(
     return ApiResponse(data=StdDocumentOut.model_validate(doc))
 
 
+@router.get("/documents/{doc_id}", response_model=ApiResponse, include_in_schema=False)
 @router.get("/{doc_id}", response_model=ApiResponse)
 async def get_document(
     doc_id: int,
@@ -87,6 +90,7 @@ async def get_document(
     })
 
 
+@router.put("/documents/{doc_id}", response_model=ApiResponse[StdDocumentOut], include_in_schema=False)
 @router.put("/{doc_id}", response_model=ApiResponse[StdDocumentOut])
 async def update_document(
     doc_id: int,
@@ -102,6 +106,7 @@ async def update_document(
     return ApiResponse(data=StdDocumentOut.model_validate(doc))
 
 
+@router.delete("/documents/{doc_id}", response_model=ApiResponse, include_in_schema=False)
 @router.delete("/{doc_id}", response_model=ApiResponse)
 async def delete_document(
     doc_id: int,
