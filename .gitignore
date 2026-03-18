@@ -34,6 +34,3 @@ generated/*.docx
 
 # 日志
 *.log
-
-# Antigravity
-.gemini/
