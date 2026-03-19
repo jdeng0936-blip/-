@@ -1,5 +1,7 @@
 "use client";
 
+import type { CalcWarning, ComplianceItem, RuleConflict, ColorStyle } from "@/types";
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,14 +40,14 @@ const GAS_LEVELS = ["低瓦斯", "高瓦斯", "突出"];
 const DIG_METHODS = ["钻爆法", "综掘"];
 
 /* 预警等级颜色 */
-const LEVEL_COLORS: Record<string, { bg: string; text: string; icon: any }> = {
+const LEVEL_COLORS: Record<string, ColorStyle> = {
   error: { bg: "bg-red-50", text: "text-red-700", icon: ShieldAlert },
   warning: { bg: "bg-amber-50", text: "text-amber-700", icon: AlertTriangle },
   info: { bg: "bg-blue-50", text: "text-blue-700", icon: Info },
 };
 
 /* 合规状态颜色 */
-const STATUS_COLORS: Record<string, { bg: string; text: string; icon: any }> = {
+const STATUS_COLORS: Record<string, ColorStyle> = {
   pass: { bg: "bg-green-50", text: "text-green-700", icon: CheckCircle },
   fail: { bg: "bg-red-50", text: "text-red-700", icon: XCircle },
   warning: { bg: "bg-amber-50", text: "text-amber-700", icon: AlertTriangle },
@@ -157,12 +159,12 @@ export default function CalcPage() {
   };
 
   /* 渲染预警列表 */
-  const renderWarnings = (warnings: any[]) => {
+  const renderWarnings = (warnings: CalcWarning[]) => {
     if (!warnings?.length) return null;
     return (
       <div className="space-y-2">
         <h4 className="text-xs font-semibold uppercase text-slate-500">合规校核预警</h4>
-        {warnings.map((w: any, i: number) => {
+        {warnings.map((w, i) => {
           const style = LEVEL_COLORS[w.level] || LEVEL_COLORS.info;
           const Icon = style.icon;
           return (
@@ -450,7 +452,7 @@ export default function CalcPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {compResult.items?.map((item: any, i: number) => {
+                  {compResult.items?.map((item: ComplianceItem, i: number) => {
                     const style = STATUS_COLORS[item.status] || STATUS_COLORS.pass;
                     const Icon = style.icon;
                     return (
@@ -500,7 +502,7 @@ export default function CalcPage() {
                       <CheckCircle className="mr-2 h-5 w-5" /> 未发现规则冲突，规则库结构良好
                     </div>
                   ) : (
-                    conflictResult.conflicts?.map((c: any, i: number) => (
+                    conflictResult.conflicts?.map((c: RuleConflict, i: number) => (
                       <div key={i} className={`rounded-md px-3 py-2.5 ${c.severity === "error" ? "bg-red-50" : "bg-amber-50"}`}>
                         <div className={`text-sm font-medium ${c.severity === "error" ? "text-red-700" : "text-amber-700"}`}>
                           [{c.type}] 规则#{c.rule_a_id}「{c.rule_a_name}」↔ 规则#{c.rule_b_id}「{c.rule_b_name}」
