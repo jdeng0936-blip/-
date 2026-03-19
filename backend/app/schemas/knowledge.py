@@ -7,7 +7,7 @@ DAT-04: 章节片段（可复用的规程内容块）
 """
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ========== DAT-02 工程案例 ==========
@@ -41,8 +41,7 @@ class EngCaseOut(BaseModel):
     tenant_id: int
     created_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ========== DAT-03 文档模板 ==========
@@ -63,8 +62,7 @@ class DocTemplateOut(BaseModel):
     tenant_id: int
     created_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ========== DAT-04 章节片段 ==========
@@ -92,5 +90,4 @@ class ChapterSnippetOut(BaseModel):
     tenant_id: int
     created_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -5,7 +5,7 @@
 """
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ========== ProjectParams ==========
@@ -36,8 +36,7 @@ class ProjectParamsOut(ProjectParamsCreate):
     id: int
     project_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ========== Project ==========
@@ -72,8 +71,7 @@ class ProjectOut(BaseModel):
     updated_at: Optional[datetime]
     params: Optional[ProjectParamsOut] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
     def from_orm_with_mine(cls, project) -> "ProjectOut":
