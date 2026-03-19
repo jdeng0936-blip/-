@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, BookOpen, Settings2, Calculator, Loader2, ArrowUpRight, Zap } from "lucide-react";
 import api from "@/lib/api";
 import Link from "next/link";
+import FeedbackStatsPanel from "@/components/business/feedback-stats";
 
 interface StatsData {
   projects: number;
@@ -116,6 +117,9 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {/* 反馈飞轮统计 */}
+      <FeedbackStatsPanel />
 
       {/* 最近项目 */}
       <Card>
