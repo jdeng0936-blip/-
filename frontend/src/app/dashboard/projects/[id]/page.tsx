@@ -242,7 +242,7 @@ export default function ProjectDetailPage() {
               {project?.face_name || project?.name || `项目 #${projectId}`}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              {project?.mine_name || ""} · {project?.status || "进行中"}
+              {project?.mine_name || ""} · {({draft:"草稿",in_progress:"进行中",completed:"已完成"} as Record<string,string>)[project?.status || ""] || project?.status || "草稿"}
             </p>
           </div>
         </div>

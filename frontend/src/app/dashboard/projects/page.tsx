@@ -17,6 +17,10 @@ import {
 import Link from "next/link";
 import api from "@/lib/api";
 
+const STATUS_LABEL: Record<string, string> = {
+  draft: "草稿", in_progress: "进行中", completed: "已完成",
+  草稿: "草稿", 进行中: "进行中", 已完成: "已完成",
+};
 const STATUS_STYLE: Record<string, string> = {
   进行中: "bg-blue-100 text-blue-700",
   已完成: "bg-green-100 text-green-700",
@@ -250,8 +254,8 @@ export default function ProjectsPage() {
                       <p className="mt-0.5 text-xs text-slate-500">{p.mine_name}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[p.status] || STATUS_STYLE["草稿"]}`}>
-                        {p.status || "草稿"}
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[STATUS_LABEL[p.status] || "草稿"] || STATUS_STYLE["草稿"]}`}>
+                        {STATUS_LABEL[p.status] || "草稿"}
                       </span>
                       <button
                         onClick={(e) => handleDelete(p.id, e)}
