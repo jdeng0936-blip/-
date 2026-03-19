@@ -75,7 +75,8 @@ export default function NewProjectWizard() {
     if (loadedMines) return;
     try {
       const res = await api.get("/system/mines");
-      setMines(res.data?.data || []);
+      const raw = res.data?.data;
+      setMines(Array.isArray(raw) ? raw : (raw?.items || []));
     } catch { /* 静默 */ }
     setLoadedMines(true);
   };
