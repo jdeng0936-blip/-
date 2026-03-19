@@ -186,9 +186,10 @@ class AIRouter:
 
     def __init__(self, session: Optional[AsyncSession] = None, tenant_id: int = 0, industry_type: str = "coal_excavation"):
         # 优先使用 OpenAI，兼容 Gemini（通过 OpenAI 兼容 API）
-        api_key = os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-        base_url = os.getenv("OPENAI_BASE_URL")
-        self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
+        from app.core.config import settings
+        api_key = settings.OPENAI_API_KEY or settings.GEMINI_API_KEY
+        base_url = settings.OPENAI_BASE_URL or None
+        self.model = settings.AI_MODEL
         self.session = session  # 数据库 session（用于向量检索）
         self.tenant_id = tenant_id
         self.industry_type = industry_type
