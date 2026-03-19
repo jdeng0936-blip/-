@@ -102,19 +102,20 @@ async def list_feedback(
 
 @router.get("/stats")
 async def feedback_stats(
-    project_id: int = Query(..., description="项目ID"),
+    project_id: int | None = Query(None, description="项目ID（不传返回全局统计）"),
     payload: dict = Depends(get_current_user_payload),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """按项目聚合反馈统计（采纳率/修改率/拒绝率）"""
+    """按项目或全局聚合反馈统计（采纳率/修改率/拒绝率）"""
     tenant_id = int(payload.get("tenant_id", 0)) if payload else 0
 
     stmt = (
         select(FeedbackLog.action, func.count().label("cnt"))
         .where(FeedbackLog.tenant_id == tenant_id)
-        .where(FeedbackLog.project_id == project_id)
-        .group_by(FeedbackLog.action)
     )
+    if project_id is not None:
+        stmt = stmt.where(FeedbackLog.project_id == project_id)
+    stmt = stmt.group_by(FeedbackLog.action)
     result = await session.execute(stmt)
     counts = {row.action: row.cnt for row in result}
 
