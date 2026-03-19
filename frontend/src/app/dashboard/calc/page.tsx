@@ -258,7 +258,7 @@ export default function CalcPage() {
                     ["最大排距", `${supportResult.max_bolt_row_spacing} mm`],
                     ["推荐每排", `${supportResult.recommended_bolt_count_per_row} 根`],
                     ["最少锚索", `${supportResult.min_cable_count} 根`],
-                    ["安全系数", `${supportResult.safety_factor}`],
+                    ["安全系数", `${supportResult.safety_factor}`, supportResult.is_compliant ? "bg-green-50" : "bg-red-50"],
                     ["支护密度", `${supportResult.support_density} 根/m²`],
                   ]} />
                   {renderWarnings(supportResult.warnings)}
@@ -400,7 +400,7 @@ export default function CalcPage() {
                     ["最少锚索", `${cableResult.min_cable_count} 根/排`, "bg-blue-50"],
                     ["推荐间距", `${cableResult.recommended_spacing} mm`, "bg-blue-50"],
                     ["最小预紧力", `${cableResult.min_pretension} kN`],
-                    ["安全系数", `${cableResult.safety_factor}`],
+                    ["安全系数", `${cableResult.safety_factor}`, cableResult.is_compliant ? "bg-green-50" : "bg-red-50"],
                   ]} />
                   {renderWarnings(cableResult.warnings)}
                 </CardContent>
