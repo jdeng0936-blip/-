@@ -86,7 +86,9 @@ export default function ProjectsPage() {
       });
       // 兼容分页格式和直接数组格式
       const data = res.data?.data;
-      setProjects(Array.isArray(data) ? data : (data?.items || []));
+      const raw = Array.isArray(data) ? data : (data?.items || []);
+      // 将 params 子对象展开到项目顶层，供卡片正确渲染
+      setProjects(raw.map((p: any) => ({ ...p, ...(p.params || {}) })));
     } catch {
       // 发生错误使用空列表
     } finally {
