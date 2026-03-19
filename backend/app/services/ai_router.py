@@ -386,7 +386,9 @@ class AIRouter:
 
         if msg.tool_calls:
             # 有工具调用 → 先执行，再流式输出解读
-            messages.append(msg.model_dump())
+            # Gemini 兼容 API 不接受 null 值，必须排除
+            assistant_msg = msg.model_dump(exclude_none=True)
+            messages.append(assistant_msg)
             full_reply = ""
 
             for tc in msg.tool_calls:
