@@ -159,34 +159,94 @@ class DocGenerator:
     # ========== 章节组装 ==========
 
     def _assemble_chapters(self, project, params_dict, match_result, calc_result, vent_result):
+        """按华阳集团《采掘运技术管理规定》9章结构组装规程内容"""
         chapters: list[ChapterContent] = []
 
-        # 第一章 概况
-        overview_lines = [
+        # ========== 第一章 地质概况 ==========
+        geo_lines = [
             f"项目名称：{project.face_name}",
             f"矿井名称：{getattr(project, 'mine_name', '—')}",
+            "",
+            "一、煤层赋存",
         ]
-        for field, label in PARAM_LABELS.items():
+        geo_fields = {
+            "coal_thickness": "煤层厚度(m)", "coal_dip_angle": "煤层倾角(°)",
+            "gas_level": "瓦斯等级", "spontaneous_combustion": "自燃倾向性",
+        }
+        for field, label in geo_fields.items():
             val = params_dict.get(field, "—")
             if val is not None:
-                overview_lines.append(f"{label}：{val}")
+                geo_lines.append(f"  {label}：{val}")
+
+        geo_lines.extend([
+            "",
+            "二、顶底板岩性",
+            f"  围岩级别：{params_dict.get('rock_class', '—')}",
+            "",
+            "三、地质构造",
+            f"  地质构造类型：{params_dict.get('geo_structure', '—')}",
+            "",
+            "四、水文地质",
+            f"  水文地质类型：{params_dict.get('hydro_type', '—')}",
+        ])
 
         chapters.append(ChapterContent(
-            chapter_no="第一章", title="工程概况",
-            content="\n".join(overview_lines), source="template",
+            chapter_no="第一章", title="地质概况",
+            content="\n".join(geo_lines), source="template",
         ))
 
-        # 第二章 支护设计（来自计算引擎）
+        # ========== 第二章 巷道布置与断面设计 ==========
+        layout_lines = [
+            "一、巷道布置",
+            f"  巷道类型：{params_dict.get('roadway_type', '—')}",
+            f"  掘进长度：{params_dict.get('excavation_length', '—')} m",
+            f"  服务年限：{params_dict.get('service_years', '—')} 年",
+            "",
+            "二、断面设计",
+            f"  断面形式：{params_dict.get('section_form', '—')}",
+            f"  断面宽度：{params_dict.get('section_width', '—')} m",
+            f"  断面高度：{params_dict.get('section_height', '—')} m",
+        ]
+        section_w = float(params_dict.get("section_width", 0) or 0)
+        section_h = float(params_dict.get("section_height", 0) or 0)
+        if section_w > 0 and section_h > 0:
+            area = round(section_w * section_h, 2)
+            layout_lines.append(f"  断面净面积：{area} m²")
+
+        layout_lines.extend([
+            "",
+            "三、煤柱留设",
+            "  按照集团《采掘运技术管理规定》及采区设计确定的煤柱尺寸执行，",
+            "  严禁在施工过程中任意扩大或缩小设计确定的煤柱。",
+        ])
+
+        chapters.append(ChapterContent(
+            chapter_no="第二章", title="巷道布置与断面设计",
+            content="\n".join(layout_lines), source="template",
+        ))
+
+        # ========== 第三章 巷道支护设计 ==========
         if calc_result:
             support_lines = [
-                f"断面净面积：{calc_result.section_area} m²",
-                f"单根锚杆锚固力：{calc_result.bolt_force} kN",
-                f"最大允许锚杆间距：{calc_result.max_bolt_spacing} mm",
-                f"最大允许排距：{calc_result.max_bolt_row_spacing} mm",
-                f"推荐每排锚杆数：{calc_result.recommended_bolt_count_per_row} 根",
-                f"最少锚索数量：{calc_result.min_cable_count} 根",
-                f"支护密度：{calc_result.support_density} 根/m²",
-                f"安全系数：{calc_result.safety_factor}",
+                "一、正常段支护参数",
+                f"  断面净面积：{calc_result.section_area} m²",
+                f"  单根锚杆锚固力：{calc_result.bolt_force} kN",
+                f"  最大允许锚杆间距：{calc_result.max_bolt_spacing} mm",
+                f"  最大允许排距：{calc_result.max_bolt_row_spacing} mm",
+                f"  推荐每排锚杆数：{calc_result.recommended_bolt_count_per_row} 根",
+                f"  最少锚索数量：{calc_result.min_cable_count} 根",
+                f"  支护密度：{calc_result.support_density} 根/m²",
+                f"  安全系数：{calc_result.safety_factor}",
+                "",
+                "二、构造影响段加强支护",
+                "  过断层、陷落柱等地质构造期间，须根据变化情况及时优化支护设计。",
+                "  冒落高度＜3m时：采用\"锚索+金属网\"超前维护后架棚通过；",
+                "  冒落高度≥3m时：直接采用架棚支护，棚距不大于规定值。",
+                "  锚索预紧力必须逐根检查，确保预应力全部达标。",
+                "",
+                "三、支护工艺",
+                "  煤巷综掘、大断面岩巷综掘必须使用机载式临时支护装置。",
+                "  使用液压锚杆台车时要保证临时支护装置完好可靠。",
             ]
             if calc_result.warnings:
                 support_lines.append("")
@@ -195,33 +255,177 @@ class DocGenerator:
                     support_lines.append(f"  ⚠ {w.message}")
 
             chapters.append(ChapterContent(
-                chapter_no="第二章", title="支护设计",
+                chapter_no="第三章", title="巷道支护设计",
                 content="\n".join(support_lines), source="calc_engine",
                 has_warning=not calc_result.is_compliant,
             ))
 
-        # 第三章 通风系统（来自计算引擎）
+        # ========== 第四章 施工工艺 ==========
+        craft_lines = [
+            "一、掘进方式",
+            f"  掘进方式：{params_dict.get('dig_method', '—')}",
+            f"  掘进类型：{params_dict.get('excavation_type', '—')}",
+            f"  掘进设备：{params_dict.get('dig_equipment', '—')}",
+            "",
+            "二、爆破作业",
+            "  严格执行\"一炮三检\"和\"三人连锁放炮\"制度。",
+            "  炮孔内发现异状、温度骤高骤低、有显著瓦斯涌出、煤岩松软时，",
+            "  必须停止装药，并采取安全措施。",
+            "",
+            "三、装载与运输",
+            f"  运输方式：{params_dict.get('transport_method', '—')}",
+            "",
+            "四、管线及轨道敷设",
+            "  风、水管路要同侧敷设，不得与瓦斯抽采管路同侧布置。",
+        ]
+
+        chapters.append(ChapterContent(
+            chapter_no="第四章", title="施工工艺",
+            content="\n".join(craft_lines), source="template",
+        ))
+
+        # ========== 第五章 生产系统 ==========
+        system_lines = []
+
+        # 5.1 通风（含计算结果）
+        system_lines.append("一、通风系统")
         if vent_result:
-            vent_lines = [
-                f"瓦斯涌出法需风量：{vent_result.q_gas} m³/min",
-                f"人数法需风量：{vent_result.q_people} m³/min",
-                f"炸药法需风量：{vent_result.q_explosive} m³/min",
-                f"最终配风量：{vent_result.q_required} m³/min",
-                f"推荐局扇：{vent_result.recommended_fan}（{vent_result.fan_power} kW）",
-            ]
+            system_lines.extend([
+                f"  瓦斯涌出法需风量：{vent_result.q_gas} m³/min",
+                f"  人数法需风量：{vent_result.q_people} m³/min",
+                f"  炸药法需风量：{vent_result.q_explosive} m³/min",
+                f"  最终配风量：{vent_result.q_required} m³/min",
+                f"  推荐局扇：{vent_result.recommended_fan}（{vent_result.fan_power} kW）",
+            ])
             if vent_result.warnings:
-                vent_lines.append("")
-                vent_lines.append("【合规预警】")
+                system_lines.append("  【合规预警】")
                 for w in vent_result.warnings:
-                    vent_lines.append(f"  ⚠ {w.message}")
+                    system_lines.append(f"    ⚠ {w.message}")
 
-            chapters.append(ChapterContent(
-                chapter_no="第三章", title="通风系统",
-                content="\n".join(vent_lines), source="calc_engine",
-                has_warning=not vent_result.is_compliant,
-            ))
+        system_lines.extend([
+            "",
+            "二、综合防尘",
+            "  采用湿式打眼、喷雾降尘、通风除尘等综合防尘措施。",
+            "  掘进工作面应安设净化水幕、转载点喷雾装置。",
+            "",
+            "三、防灭火",
+            "  巷道布置及通风设施设置须符合防灭火要求。",
+            "  厚煤层工作面进、回风巷开口须按规定设置防灭火设施。",
+            "",
+            "四、供电",
+            "  掘进工作面供电须采用三专线路（专用变压器、开关、电缆）。",
+            "",
+            "五、供排水",
+            "  掘进工作面须配备排水设备，排水能力须满足最大涌水量要求。",
+            "",
+            "六、压风系统",
+            "  压风自救装置安设间距不超过200米。",
+            "",
+            "七、监控与通讯",
+            "  掘进工作面须安设甲烷传感器、一氧化碳传感器、风速传感器。",
+            "  高瓦斯矿井使用量程上限不低于10%的甲烷传感器；",
+            "  突出煤层使用量程上限不低于40%的甲烷传感器。",
+        ])
 
-        # 第四章+ 规则匹配命中的章节
+        chapters.append(ChapterContent(
+            chapter_no="第五章", title="生产系统",
+            content="\n".join(system_lines), source="calc_engine" if vent_result else "template",
+            has_warning=vent_result and not vent_result.is_compliant,
+        ))
+
+        # ========== 第六章 劳动组织 ==========
+        labor_lines = [
+            "一、劳动组织",
+            "  实行\"三八\"作业制，两班生产、一班检修。",
+            "",
+            "二、循环作业",
+            "  按照\"正规循环作业\"要求组织生产，正规循环率不低于80%。",
+            "",
+            "三、主要技术经济指标",
+            f"  巷道掘进长度：{params_dict.get('excavation_length', '—')} m",
+        ]
+
+        chapters.append(ChapterContent(
+            chapter_no="第六章", title="劳动组织及主要技术经济指标",
+            content="\n".join(labor_lines), source="template",
+        ))
+
+        # ========== 第七章 安全技术措施（8专项） ==========
+        safety_lines = [
+            "一、顶板管理",
+            "  掘进工作面应当严格执行敲帮问顶制度，开工前必须全面检查。",
+            "  空顶距离不得超过规定值，掘开面附近必须设临时支护。",
+            "",
+            "二、一通三防",
+            "  严格执行瓦斯检查制度，瓦斯超限必须停止作业。",
+            f"  本工作面瓦斯等级：{params_dict.get('gas_level', '—')}",
+            "",
+            "三、爆破安全",
+            "  严格执行\"一炮三检\"制度，瓦斯浓度达到0.5%时严禁放炮。",
+            "",
+            "四、防治水",
+            "  坚持\"有疑必探、先探后掘\"的原则。",
+            f"  水文地质类型：{params_dict.get('hydro_type', '—')}",
+            "",
+            "五、机电安全",
+            "  井下电气设备必须取得煤矿矿用产品安全标志。",
+            "  各部位绝缘电阻值应不低于0.5MΩ。",
+            "",
+            "六、运输安全",
+            "  运输设备运行前必须发出警报信号。",
+            "",
+            "七、监控与通讯",
+            "  掘进工作面必须安装甲烷传感器并实现瓦斯电闭锁。",
+            "",
+            "八、其它安全措施",
+            "  掘进面进入构造影响区域前，须提前制定专项安全技术措施。",
+        ]
+
+        chapters.append(ChapterContent(
+            chapter_no="第七章", title="安全技术措施",
+            content="\n".join(safety_lines), source="template",
+        ))
+
+        # ========== 第八章 灾害预防 ==========
+        disaster_lines = [
+            "一、主要灾害类型辨识",
+            f"  瓦斯等级：{params_dict.get('gas_level', '—')}",
+            f"  自燃倾向性：{params_dict.get('spontaneous_combustion', '—')}",
+            f"  水文地质类型：{params_dict.get('hydro_type', '—')}",
+            "",
+            "二、灾害预防措施",
+            "  根据辨识出的灾害类型，逐项制定针对性预防措施。",
+            "  瓦斯灾害：加强瓦斯抽采和监测，确保通风可靠。",
+            "  水害：坚持先探后掘，配备专用排水系统。",
+            "  火灾：合理设置防灭火设施，配备灭火器材。",
+            "  顶板灾害：严格支护管理，加强矿压观测。",
+        ]
+
+        chapters.append(ChapterContent(
+            chapter_no="第八章", title="灾害预防",
+            content="\n".join(disaster_lines), source="template",
+        ))
+
+        # ========== 第九章 应急避险 ==========
+        emergency_lines = [
+            "一、应急预案",
+            "  按照集团《采掘运技术管理规定》要求，制定掘进工作面专项应急预案。",
+            "",
+            "二、避灾路线",
+            "  根据掘进工作面位置和灾害类型，明确相应避灾路线。",
+            "  避灾路线须标注在作业规程附图中，并在井下设置明显标识。",
+            "",
+            "三、自救器及避险设施",
+            "  掘进工作面所有作业人员必须随身携带自救器。",
+            "  压风自救装置安设间距不超过200米。",
+        ]
+
+        chapters.append(ChapterContent(
+            chapter_no="第九章", title="安全风险管控及应急避险",
+            content="\n".join(emergency_lines), source="template",
+        ))
+
+        # ========== 附录：编制依据与规则命中 ==========
         if match_result and match_result.matched_rules:
             rule_lines = []
             for mr in match_result.matched_rules:
@@ -230,27 +434,12 @@ class DocGenerator:
                     rule_lines.append(f"  → 关联章节：{a.target_chapter}")
 
             chapters.append(ChapterContent(
-                chapter_no="第四章", title="编制依据与规则命中",
+                chapter_no="附录", title="编制依据与规则命中",
                 content="\n".join(rule_lines), source="rule_match",
             ))
 
-        # 第五章 安全技术措施（模板）
-        chapters.append(ChapterContent(
-            chapter_no="第五章", title="安全技术措施",
-            content=(
-                "一、顶板管理\n"
-                "  掘进工作面应当严格执行敲帮问顶制度...\n\n"
-                "二、防治水措施\n"
-                '  坚持"有疑必探、先探后掘"的原则...\n\n'
-                "三、瓦斯管理\n"
-                "  严格执行瓦斯检查制度，瓦斯超限必须停止作业...\n\n"
-                "四、防尘措施\n"
-                "  采用湿式打眼、喷雾降尘、通风除尘等综合防尘措施..."
-            ),
-            source="template",
-        ))
-
         return chapters
+
 
     async def _ai_polish_content(self, chapters: list[ChapterContent], params: dict) -> list[ChapterContent]:
         """
@@ -281,7 +470,10 @@ class DocGenerator:
         emb_svc = EmbeddingService(self.session)
 
         for ch in chapters:
-            if "安全技术措施" in ch.title or "灾害预防" in ch.title or "支护" in ch.title:
+            if any(kw in ch.title for kw in [
+                "安全技术措施", "灾害预防", "支护", "应急", "施工工艺",
+                "生产系统", "防尘", "防灭火"
+            ]):
                 # ===== RAG 检索：标准库 + 知识库 =====
                 rag_context_parts = []
 

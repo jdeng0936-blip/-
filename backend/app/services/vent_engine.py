@@ -13,11 +13,25 @@ import math
 from app.schemas.vent import VentCalcInput, VentCalcResult, VentWarning
 
 
-# 瓦斯等级 → 涌出安全系数
+# 瓦斯等级 → 涌出安全系数（国标基准）
 GAS_K_FACTOR: dict[str, float] = {
     "低瓦斯": 1.5,
     "高瓦斯": 2.0,
     "突出": 2.5,
+}
+
+# ===== 集团加严参数（华阳集团《采掘运技术管理规定》）=====
+# 瓦斯备用风量系数下限：高突矿井此值小于1.7时取1.7
+GROUP_MIN_K_GAS: dict[str, float] = {
+    "突出": 1.7,
+}
+# 突出煤层掘进工作面最低配风量
+GROUP_MIN_AIRFLOW: dict[str, float] = {
+    "突出": 400.0,  # m³/min
+}
+# 突出煤层全风压最低风速
+GROUP_MIN_WIND_SPEED: dict[str, float] = {
+    "突出": 0.25,  # m/s
 }
 
 # 局扇选型表（按需风量区间）
@@ -57,6 +71,11 @@ class VentCalcEngine:
 
         # ===== V4: 取最大值 =====
         q_required = max(q_gas, q_people, q_explosive)
+
+        # ===== 集团加严：突出煤层最低配风量 =====
+        group_min = GROUP_MIN_AIRFLOW.get(input_data.gas_level, 0)
+        if group_min > 0 and q_required < group_min:
+            q_required = group_min  # 集团标准兜底
 
         # ===== V5: 风速验算 =====
         # v = Q / (60 × S)
@@ -136,6 +155,46 @@ class VentCalcEngine:
                 message=f"{input_data.gas_level}矿井，须配备瓦斯监测及断电装置",
                 current_value=K_g,
                 required_value=1.5,
+            ))
+
+        # ===== 集团标准合规校核 =====
+
+        # 集团加严：突出煤层最低配风量
+        group_min_air = GROUP_MIN_AIRFLOW.get(input_data.gas_level, 0)
+        if group_min_air > 0:
+            if q_required < group_min_air:
+                warnings.append(VentWarning(
+                    level="error", field="q_required",
+                    message=(
+                        f"【集团标准】突出煤层掘进工作面配风量 {q_required} m³/min "
+                        f"< 集团最低要求 {group_min_air} m³/min"
+                    ),
+                    current_value=q_required,
+                    required_value=group_min_air,
+                ))
+                is_compliant = False
+            else:
+                warnings.append(VentWarning(
+                    level="info", field="q_required",
+                    message=(
+                        f"【集团标准】突出煤层配风量 {q_required} m³/min "
+                        f"≥ 集团最低要求 {group_min_air} m³/min ✓"
+                    ),
+                    current_value=q_required,
+                    required_value=group_min_air,
+                ))
+
+        # 集团加严：瓦斯备用风量系数
+        group_min_k = GROUP_MIN_K_GAS.get(input_data.gas_level, 0)
+        if group_min_k > 0 and K_g < group_min_k:
+            warnings.append(VentWarning(
+                level="warning", field="gas_k_factor",
+                message=(
+                    f"【集团标准】瓦斯备用风量系数 {K_g} "
+                    f"< 集团最低要求 {group_min_k}，建议调整"
+                ),
+                current_value=K_g,
+                required_value=group_min_k,
             ))
 
         return VentCalcResult(

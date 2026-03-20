@@ -91,6 +91,7 @@ class EmbeddingService:
                 c.clause_no,
                 c.content,
                 d.title AS doc_title,
+                d.doc_type,
                 (c.embedding <=> :query_emb::vector) AS distance
             FROM std_clause c
             JOIN std_document d ON c.document_id = d.id
@@ -114,6 +115,7 @@ class EmbeddingService:
                 "clause_no": row.clause_no,
                 "content": row.content,
                 "doc_title": row.doc_title,
+                "doc_type": getattr(row, 'doc_type', ''),
                 "distance": round(float(row.distance), 4),
             }
             for row in rows
