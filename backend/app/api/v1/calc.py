@@ -83,3 +83,40 @@ async def check_rule_conflicts(
     detector = ConflictDetector(session)
     result = await detector.detect(group_id=group_id)
     return ApiResponse(data=result)
+
+
+@router.post("/compliance/project/{project_id}", response_model=ApiResponse[ComplianceResult])
+async def calc_project_compliance(
+    project_id: int,
+    payload: dict = Depends(get_current_user_payload),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """按项目ID自动提取参数执行合规审查（无需前端手动填参数）"""
+    from sqlalchemy import text
+
+    tenant_id = int(payload.get("tenant_id", 0)) if payload else 0
+    row = await session.execute(text(
+        "SELECT pp.rock_class, pp.gas_level, pp.coal_thickness, "
+        "pp.spontaneous_combustion, pp.section_form, pp.section_width, "
+        "pp.section_height, pp.excavation_length "
+        "FROM project_params pp "
+        "JOIN project p ON p.id = pp.project_id "
+        "WHERE pp.project_id = :pid AND p.tenant_id = :tid"
+    ), {"pid": project_id, "tid": tenant_id})
+    r = row.mappings().first()
+    if not r:
+        from fastapi import HTTPException
+        raise HTTPException(404, "项目不存在或无参数")
+
+    inp = ComplianceInput(
+        rock_class=r["rock_class"] or "III",
+        gas_level=r["gas_level"] or "低瓦斯",
+        coal_thickness=float(r["coal_thickness"] or 3.0),
+        spontaneous_combustion=r["spontaneous_combustion"] or "不易自燃",
+        section_form=r["section_form"] or "矩形",
+        section_width=float(r["section_width"] or 4.5),
+        section_height=float(r["section_height"] or 3.2),
+        excavation_length=float(r["excavation_length"] or 600),
+    )
+    result = ComplianceEngine.check(inp)
+    return ApiResponse(data=result)
