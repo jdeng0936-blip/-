@@ -1,5 +1,5 @@
+import asyncio
 """
-文档生成引擎 — 编排全链路：参数→规则匹配→计算→模板填充→Word 输出
 
 流程：
   1. 加载 ProjectParams + Project 基础信息
@@ -469,15 +469,22 @@ class DocGenerator:
         # RAG 检索服务
         emb_svc = EmbeddingService(self.session)
 
-        for ch in chapters:
-            if any(kw in ch.title for kw in [
+        # 单章超时（秒）— 超时自动降级为模板内容
+        POLISH_TIMEOUT = 30
+
+        async def _polish_one(ch: ChapterContent) -> None:
+            """单章 AI 润色 — 超时或异常时静默降级"""
+            if not any(kw in ch.title for kw in [
                 "安全技术措施", "灾害预防", "支护", "应急", "施工工艺",
                 "生产系统", "防尘", "防灭火"
             ]):
-                # ===== RAG 检索：标准库 + 知识库 =====
-                rag_context_parts = []
+                return  # 不需要润色的章节直接跳过
 
-                # L1a: 标准库条款
+            # ===== RAG 检索：标准库 + 知识库 =====
+            rag_context_parts = []
+
+            # L1a: 标准库条款
+            try:
                 std_results = await emb_svc.search_similar(
                     query=ch.title, tenant_id=1, top_k=3, threshold=0.4
                 )
@@ -487,8 +494,11 @@ class DocGenerator:
                         rag_context_parts.append(
                             f"- [{r['doc_title']}] {r['clause_no']}: {r['content'][:300]}"
                         )
+            except Exception:
+                pass  # RAG 检索失败不影响生成
 
-                # L1b: 知识库（客户规程片段）
+            # L1b: 知识库（客户规程片段）
+            try:
                 snippet_results = await emb_svc.search_snippets(
                     query=ch.title, tenant_id=1, top_k=5, threshold=0.4
                 )
@@ -498,37 +508,47 @@ class DocGenerator:
                         rag_context_parts.append(
                             f"- [{r['chapter_name']}]: {r['content'][:300]}"
                         )
+            except Exception:
+                pass
 
-                rag_context = "\n".join(rag_context_parts)
-                rag_note = ""
-                if rag_context:
-                    rag_note = (
-                        f"\n\n以下是从客户已有规程和国家标准中检索到的相关内容，"
-                        f"请务必参考并融入你的输出中，确保与客户实际情况一致：\n{rag_context}\n"
-                    )
-
-                prompt = (
-                    f"请作为顶尖煤矿安全专家，根据以下参数对作业规程的【{ch.title}】章节进行扩充、润色，"
-                    f"使其更符合现场实际，具备可操作性，避免生硬的模板拼接感。\n"
-                    f"地质条件与参数: {params}\n"
-                    f"原始内容框架:\n{ch.content}"
-                    f"{rag_note}\n\n"
-                    "要求：\n"
-                    "1. 直接输出润色后的篇章正式内容，不要包含任何前言后语和分析推理过程。\n"
-                    "2. 分条列出，层级清晰，重点突出。\n"
-                    "3. 如引用了参考资料中的具体数值标准，请在文中自然融入。"
+            rag_context = "\n".join(rag_context_parts)
+            rag_note = ""
+            if rag_context:
+                rag_note = (
+                    f"\n\n以下是从客户已有规程和国家标准中检索到的相关内容，"
+                    f"请务必参考并融入你的输出中，确保与客户实际情况一致：\n{rag_context}\n"
                 )
-                try:
-                    resp = await client.chat.completions.create(
+
+            prompt = (
+                f"请作为顶尖煤矿安全专家，根据以下参数对作业规程的【{ch.title}】章节进行扩充、润色，"
+                f"使其更符合现场实际，具备可操作性，避免生硬的模板拼接感。\n"
+                f"地质条件与参数: {params}\n"
+                f"原始内容框架:\n{ch.content}"
+                f"{rag_note}\n\n"
+                "要求：\n"
+                "1. 直接输出润色后的篇章正式内容，不要包含任何前言后语和分析推理过程。\n"
+                "2. 分条列出，层级清晰，重点突出。\n"
+                "3. 如引用了参考资料中的具体数值标准，请在文中自然融入。"
+            )
+            try:
+                resp = await asyncio.wait_for(
+                    client.chat.completions.create(
                         model=model,
                         messages=[{"role": "user", "content": prompt}]
-                    )
-                    polished = resp.choices[0].message.content
-                    if polished:
-                        ch.content = polished
-                        ch.source = "ai_polished"
-                except Exception as e:
-                    print(f"⚠️ AI 润色失败: {e}")
+                    ),
+                    timeout=POLISH_TIMEOUT,
+                )
+                polished = resp.choices[0].message.content
+                if polished:
+                    ch.content = polished
+                    ch.source = "ai_polished"
+            except asyncio.TimeoutError:
+                print(f"⏱️ AI 润色超时({POLISH_TIMEOUT}s), 降级使用模板: {ch.title}")
+            except Exception as e:
+                print(f"⚠️ AI 润色失败: {ch.title}: {e}")
+
+        # 并发润色所有章节（从串行 ~150s 降至并发 ~30s）
+        await asyncio.gather(*[_polish_one(ch) for ch in chapters])
 
         return chapters
 

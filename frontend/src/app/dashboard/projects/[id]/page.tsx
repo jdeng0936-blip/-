@@ -75,6 +75,7 @@ const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
   calc_engine: { label: "计算引擎", color: "bg-blue-100 text-blue-700" },
   rule_match: { label: "规则匹配", color: "bg-purple-100 text-purple-700" },
   ai: { label: "AI 生成", color: "bg-green-100 text-green-700" },
+  ai_polished: { label: "AI 润色", color: "bg-emerald-100 text-emerald-700" },
   group_standard: { label: "集团标准", color: "bg-amber-100 text-amber-700" },
 };
 
