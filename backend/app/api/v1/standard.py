@@ -1,10 +1,12 @@
 """
-标准库 API 路由 — 规范文档 CRUD + 条款树管理
+标准库 API 路由 — 规范文档 CRUD + 条款树管理 + 文件上传解析
 
 所有接口强制 JWT 认证 + tenant_id 隔离。
 """
+import os
+import tempfile
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
@@ -22,6 +24,72 @@ from app.schemas.standard import (
 from app.services.standard_service import StandardService
 
 router = APIRouter(prefix="/standards", tags=["标准库"])
+
+
+# ========== 文件上传解析 ==========
+
+@router.post("/upload", response_model=ApiResponse)
+async def upload_and_parse(
+    file: UploadFile = File(..., description="规范文件（.doc/.docx）"),
+    doc_type: str = Form("安全规程", description="文档类型"),
+    version: str = Form("v1.0", description="版本号"),
+    payload: dict = Depends(get_current_user_payload),
+    tenant_id: int = Depends(get_tenant_id),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """
+    上传规范文件 → 自动提取文本 → 章节切分 → 入库 → 向量化
+
+    支持格式: .doc, .docx, .txt
+    """
+    # 校验文件类型
+    filename = file.filename or "unknown.docx"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in (".doc", ".docx", ".txt"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件格式: {ext}，仅支持 .doc/.docx/.txt"
+        )
+
+    # 保存临时文件
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        from app.services.document_parser import DocumentParserService
+
+        parser = DocumentParserService(session)
+
+        # 解析并入库
+        result = parser.parse_and_ingest(
+            file_path=tmp_path,
+            filename=filename,
+            doc_type=doc_type,
+            version=version,
+            tenant_id=tenant_id,
+            created_by=int(payload["sub"]),
+        )
+        # parse_and_ingest 是 async 方法
+        result = await result
+
+        # 异步向量化（不阻塞响应）
+        vectorized = await parser.vectorize_document(result["document_id"])
+        result["vectorized_count"] = vectorized
+
+        return ApiResponse(
+            message=f"文件解析入库成功，共 {result['clause_count']} 条条款",
+            data=result,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
+    finally:
+        # 清理临时文件
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 # ========== 规范文档 ==========

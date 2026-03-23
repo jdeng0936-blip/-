@@ -250,3 +250,84 @@ class SupportCalcEngine:
             is_compliant=is_compliant,
             warnings=warnings,
         )
+
+    @staticmethod
+    def narrative(inp: SupportCalcInput, res: SupportCalcResult) -> str:
+        """
+        输出完整支护计算推导过程段落，供 AI 注入文档使用
+
+        包含：断面面积计算、锚杆锚固力推导、间排距验算、
+        锚索校核、支护密度校核等全公式推导
+        """
+        K = res.safety_factor
+        gamma = inp.rock_density
+        W = inp.section_width
+        H = inp.section_height
+        L_bolt = inp.bolt_length
+        d_bolt = inp.bolt_diameter
+
+        lines = []
+        lines.append("一、巷道断面面积计算")
+        if inp.section_form == "拱形":
+            import math
+            area = W * (H - W / 2) + math.pi * (W / 2) ** 2 / 2
+            lines.append(f"  断面形式：拱形（半圆拱+直墙）")
+            lines.append(f"  S = W×(H-W/2) + π×(W/2)²/2")
+            lines.append(f"    = {W}×({H}-{W}/2) + π×({W}/2)²/2")
+            lines.append(f"    = {round(area, 2)} m²")
+        elif inp.section_form == "梯形":
+            area = W * H * 0.9
+            lines.append(f"  断面形式：梯形")
+            lines.append(f"  S = W×H×0.9 = {W}×{H}×0.9 = {round(area, 2)} m²")
+        else:
+            area = W * H
+            lines.append(f"  断面形式：矩形")
+            lines.append(f"  S = W×H = {W}×{H} = {round(area, 2)} m²")
+
+        lines.append("")
+        lines.append("二、锚杆锚固力计算")
+        lines.append(f"  围岩级别：{inp.rock_class}类，安全系数 K = {K}")
+        lines.append(f"  岩体容重：γ = {gamma} t/m³ = {gamma * 9.81:.2f} kN/m³")
+        lines.append(f"  锚杆规格：Φ{d_bolt}×{int(L_bolt * 1000)}mm")
+        lines.append(f"  单根锚杆影响面积取 0.64 m²（保守取值）")
+        lines.append(f"  Q = K × γ × g × S影响 × L")
+        lines.append(f"    = {K} × {gamma} × 9.81 × 0.64 × {L_bolt}")
+        lines.append(f"    = {res.bolt_force} kN")
+
+        lines.append("")
+        lines.append("三、锚杆间排距验算")
+        lines.append(f"  锚杆钢筋等级：HRB500，抗拉强度 σ_t = 500 MPa")
+        import math
+        A_bolt = math.pi / 4 * (d_bolt / 1000) ** 2
+        F_bolt = 500e3 * A_bolt
+        lines.append(f"  锚杆截面积 A = π/4×({d_bolt}/1000)² = {A_bolt * 1e6:.2f} mm²")
+        lines.append(f"  单根抗拉承载力 F = σ×A = 500×{A_bolt * 1e6:.2f} = {F_bolt:.2f} kN")
+        lines.append(f"  最大间距 a = √(F/(K×γ×g×L))")
+        lines.append(f"            = √({F_bolt:.2f}/({K}×{gamma}×9.81×{L_bolt}))")
+        lines.append(f"            = {res.max_bolt_spacing:.0f} mm")
+        lines.append(f"  设计间排距 ≤ {res.max_bolt_spacing:.0f}mm")
+        lines.append(f"  推荐每排锚杆数：≥{res.recommended_bolt_count_per_row} 根")
+
+        lines.append("")
+        lines.append("四、锚索校核")
+        S_top = W * 1.0
+        lines.append(f"  顶板面积 S_top = {W}×1.0 = {S_top} m²/m")
+        lines.append(f"  总支护载荷 = K×γ×g×S_top×L = {K}×{gamma}×9.81×{S_top}×{L_bolt}")
+        lines.append(f"             = {res.total_support_load} kN")
+        lines.append(f"  锚索安全系数 K_s = 2.0")
+        lines.append(f"  单根锚索容许承载力 = {inp.cable_strength}/2.0 = {inp.cable_strength / 2:.2f} kN")
+        lines.append(f"  最少锚索数 = {res.total_support_load}/{inp.cable_strength / 2:.2f} = {res.min_cable_count} 根")
+
+        lines.append("")
+        lines.append("五、支护密度校核")
+        lines.append(f"  支护密度 = 10⁶/({res.max_bolt_spacing:.0f}×{res.max_bolt_row_spacing:.0f})")
+        lines.append(f"           = {res.support_density} 根/m²")
+
+        lines.append("")
+        lines.append("六、合规性校核结论")
+        lines.append(f"  整体合规性：{'合规 ✓' if res.is_compliant else '不合规 ✗'}")
+        for w in res.warnings:
+            lines.append(f"  [{w.level.upper()}] {w.message}")
+
+        return "\n".join(lines)
+

@@ -209,3 +209,82 @@ class VentCalcEngine:
             is_compliant=is_compliant,
             warnings=warnings,
         )
+
+    @staticmethod
+    def narrative(inp: VentCalcInput, res: VentCalcResult) -> str:
+        """
+        输出完整通风计算推导过程段落，供 AI 注入文档使用
+
+        包含：瓦斯涌出法、人数法、炸药法、取大值、风速校核、局扇选型
+        """
+        K_g = GAS_K_FACTOR.get(inp.gas_level, 1.5)
+
+        lines = []
+        lines.append("一、掘进工作面需风量计算")
+        lines.append("")
+        lines.append("（一）按瓦斯涌出量计算")
+        lines.append(f"  依据《煤矿安全规程》第XXX条，按瓦斯涌出量计算掘进工作面需风量。")
+        lines.append(f"  Q瓦斯 = 100 × q × K")
+        lines.append(f"  式中：q — 掘进工作面绝对瓦斯涌出量 = {inp.gas_emission} m³/min")
+        lines.append(f"        K — 瓦斯涌出不均衡系数 = {K_g}（{inp.gas_level}矿井）")
+        lines.append(f"  Q瓦斯 = 100 × {inp.gas_emission} × {K_g}")
+        lines.append(f"       = {res.q_gas} m³/min")
+
+        lines.append("")
+        lines.append("（二）按下井人数计算")
+        lines.append(f"  Q人数 = 4 × N")
+        lines.append(f"  式中：N — 掘进工作面同时最多人数 = {inp.max_workers} 人")
+        lines.append(f"  Q人数 = 4 × {inp.max_workers}")
+        lines.append(f"       = {res.q_people} m³/min")
+
+        lines.append("")
+        lines.append("（三）按炸药消耗量计算")
+        if inp.explosive_per_cycle > 0:
+            lines.append(f"  Q炸药 = 25 × A^(1/3)")
+            lines.append(f"  式中：A — 每次爆破炸药最大消耗量 = {inp.explosive_per_cycle} kg")
+            lines.append(f"  Q炸药 = 25 × {inp.explosive_per_cycle}^(1/3)")
+            lines.append(f"       = {res.q_explosive} m³/min")
+        else:
+            lines.append(f"  本工作面采用综掘方式，不使用炸药，Q炸药 = 0 m³/min")
+
+        lines.append("")
+        lines.append("（四）确定掘进工作面需风量")
+        lines.append(f"  Q = max(Q瓦斯, Q人数, Q炸药)")
+        lines.append(f"    = max({res.q_gas}, {res.q_people}, {res.q_explosive})")
+        lines.append(f"    = {res.q_required} m³/min")
+
+        # 集团标准兜底
+        group_min = GROUP_MIN_AIRFLOW.get(inp.gas_level, 0)
+        if group_min > 0:
+            lines.append(f"  【集团标准】突出煤层最低配风量为 {group_min} m³/min")
+            lines.append(f"  最终确定 Q = max({res.q_required}, {group_min}) = {max(res.q_required, group_min)} m³/min")
+
+        lines.append("")
+        lines.append("二、风速验算")
+        lines.append(f"  巷道断面积 S = {inp.section_area} m²")
+        lines.append(f"  V = Q/(60×S) = {res.q_required}/(60×{inp.section_area})")
+        v = res.q_required / (60 * inp.section_area) if inp.section_area > 0 else 0
+        lines.append(f"    = {round(v, 2)} m/s")
+        lines.append(f"  依据《煤矿安全规程》：0.25 m/s ≤ V ≤ 4.0 m/s")
+        if 0.25 <= v <= 4.0:
+            lines.append(f"  校核结果：{round(v, 2)} m/s 满足要求 ✓")
+        elif v < 0.25:
+            lines.append(f"  校核结果：{round(v, 2)} m/s 低于下限 0.25 m/s，需增大供风量 ✗")
+        else:
+            lines.append(f"  校核结果：{round(v, 2)} m/s 超过上限 4.0 m/s ✗")
+
+        lines.append("")
+        lines.append("三、局部通风机选型")
+        lines.append(f"  需风量 {res.q_required} m³/min")
+        lines.append(f"  推荐型号：{res.recommended_fan}")
+        lines.append(f"  额定功率：{res.fan_power} kW")
+        lines.append(f"  必须实现双风机双电源自动切换，切换时间≤10秒。")
+
+        lines.append("")
+        lines.append("四、合规性校核结论")
+        lines.append(f"  整体合规性：{'合规 ✓' if res.is_compliant else '不合规 ✗'}")
+        for w in res.warnings:
+            lines.append(f"  [{w.level.upper()}] {w.message}")
+
+        return "\n".join(lines)
+

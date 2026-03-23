@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,66 +11,39 @@ import {
   ArrowLeft,
   Plus,
   Pencil,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import api from "@/lib/api";
 
-/** 模拟条款树数据 — 待后端对接后替换 */
-const MOCK_CLAUSES = [
-  {
-    id: 1,
-    clause_no: "第一章",
-    title: "总则",
-    content: "为加强煤矿安全管理，保障煤矿职工生命安全和健康...",
-    level: 0,
-    children: [
-      {
-        id: 2,
-        clause_no: "第1条",
-        title: "适用范围",
-        content:
-          "本规程适用于中华人民共和国领域内从事煤炭开采活动的企业和个人。",
-        level: 1,
-        children: [],
-      },
-      {
-        id: 3,
-        clause_no: "第2条",
-        title: "基本原则",
-        content: "煤矿企业必须坚持安全第一、预防为主、综合治理的安全生产方针。",
-        level: 1,
-        children: [],
-      },
-    ],
-  },
-  {
-    id: 4,
-    clause_no: "第二章",
-    title: "掘进",
-    content: "",
-    level: 0,
-    children: [
-      {
-        id: 5,
-        clause_no: "第36条",
-        title: "掘进工作面安全要求",
-        content:
-          "掘进工作面应当保持安全出口畅通，严禁堵塞安全出口。工作面支护应当紧跟迎头...",
-        level: 1,
-        children: [],
-      },
-    ],
-  },
-];
+/** 条款节点类型定义 */
+interface ClauseNode {
+  id: number;
+  clause_no: string;
+  title: string;
+  content: string;
+  level: number;
+  children: ClauseNode[];
+}
+
+/** 文档信息类型 */
+interface DocumentInfo {
+  id: number;
+  title: string;
+  doc_type: string;
+  version: string | null;
+  is_current: boolean;
+}
 
 /** 条款树节点组件 */
-function ClauseNode({
+function ClauseTreeNode({
   clause,
   selectedId,
   onSelect,
 }: {
-  clause: (typeof MOCK_CLAUSES)[0];
+  clause: ClauseNode;
   selectedId: number | null;
-  onSelect: (clause: (typeof MOCK_CLAUSES)[0]) => void;
+  onSelect: (clause: ClauseNode) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = clause.children && clause.children.length > 0;
@@ -110,9 +84,9 @@ function ClauseNode({
       {hasChildren && expanded && (
         <div>
           {clause.children.map((child) => (
-            <ClauseNode
+            <ClauseTreeNode
               key={child.id}
-              clause={child as (typeof MOCK_CLAUSES)[0]}
+              clause={child}
               selectedId={selectedId}
               onSelect={onSelect}
             />
@@ -123,15 +97,70 @@ function ClauseNode({
   );
 }
 
-/** 文档详情页 — 左侧条款树 + 右侧内容 */
+/** 文档详情页 — 左侧条款树 + 右侧内容（动态从 API 加载） */
 export default function StandardDetailPage() {
-  const [selectedClause, setSelectedClause] = useState<
-    (typeof MOCK_CLAUSES)[0] | null
-  >(MOCK_CLAUSES[0]);
+  const params = useParams();
+  const docId = params.id as string;
+
+  const [document, setDocument] = useState<DocumentInfo | null>(null);
+  const [clauses, setClauses] = useState<ClauseNode[]>([]);
+  const [selectedClause, setSelectedClause] = useState<ClauseNode | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // 从后端 API 加载文档详情和条款树
+  useEffect(() => {
+    async function fetchDocument() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get(`/standards/${docId}`);
+        const data = res.data?.data;
+        if (data) {
+          setDocument(data.document);
+          setClauses(data.clauses || []);
+          // 默认选中第一个条款
+          if (data.clauses && data.clauses.length > 0) {
+            setSelectedClause(data.clauses[0]);
+          }
+        }
+      } catch (err: unknown) {
+        console.error("加载文档失败:", err);
+        setError("加载文档失败，请检查网络连接");
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (docId) {
+      fetchDocument();
+    }
+  }, [docId]);
+
+  // 加载状态
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <span className="ml-3 text-slate-500">加载文档中...</span>
+      </div>
+    );
+  }
+
+  // 错误状态
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-red-500">{error}</p>
+        <Link href="/dashboard/standards">
+          <Button variant="outline" className="mt-4">返回标准库</Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* 顶栏 */}
+      {/* 顶栏 — 动态显示文档标题和类型 */}
       <div className="flex items-center gap-4">
         <Link href="/dashboard/standards">
           <Button variant="ghost" size="icon">
@@ -140,9 +169,12 @@ export default function StandardDetailPage() {
         </Link>
         <div>
           <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-            煤矿安全规程
+            {document?.title || "未知文档"}
           </h2>
-          <p className="text-sm text-slate-500">法律法规 · 2022版</p>
+          <p className="text-sm text-slate-500">
+            {document?.doc_type || "未分类"}
+            {document?.version ? ` · ${document.version}` : ""}
+          </p>
         </div>
       </div>
 
@@ -151,23 +183,34 @@ export default function StandardDetailPage() {
         {/* 左侧条款树 */}
         <Card className="col-span-4 overflow-hidden">
           <CardHeader className="flex-row items-center justify-between pb-3">
-            <CardTitle className="text-sm">条款目录</CardTitle>
+            <CardTitle className="text-sm">
+              条款目录
+              <span className="ml-2 text-xs font-normal text-slate-400">
+                共 {clauses.length} 章
+              </span>
+            </CardTitle>
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
               <Plus className="h-3 w-3" />
               新增
             </Button>
           </CardHeader>
           <CardContent className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 310px)" }}>
-            <div className="space-y-0.5">
-              {MOCK_CLAUSES.map((clause) => (
-                <ClauseNode
-                  key={clause.id}
-                  clause={clause}
-                  selectedId={selectedClause?.id ?? null}
-                  onSelect={setSelectedClause}
-                />
-              ))}
-            </div>
+            {clauses.length > 0 ? (
+              <div className="space-y-0.5">
+                {clauses.map((clause) => (
+                  <ClauseTreeNode
+                    key={clause.id}
+                    clause={clause}
+                    selectedId={selectedClause?.id ?? null}
+                    onSelect={setSelectedClause}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-sm text-slate-400 py-10">
+                暂无条款数据
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -186,10 +229,10 @@ export default function StandardDetailPage() {
               </Button>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 310px)" }}>
             {selectedClause ? (
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                <p className="leading-7 text-slate-700 dark:text-slate-300">
+                <p className="whitespace-pre-wrap leading-7 text-slate-700 dark:text-slate-300">
                   {selectedClause.content || "（此条款暂无正文内容）"}
                 </p>
               </div>

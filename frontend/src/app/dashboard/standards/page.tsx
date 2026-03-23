@@ -19,9 +19,11 @@ import {
   Trash2,
   BookOpen,
   Loader2,
+  Upload,
 } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
+import UploadStandardDialog from "@/components/standards/UploadStandardDialog";
 
 /** 文档类型选项 */
 const DOC_TYPES = ["全部", "法律法规", "技术规范", "集团标准", "安全规程"];
@@ -43,6 +45,7 @@ export default function StandardsPage() {
   const [docs, setDocs] = useState<StdDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ title: "", doc_type: "技术规范", version: "" });
 
@@ -103,9 +106,14 @@ export default function StandardsPage() {
             管理法律法规、技术规范、集团标准等基础规范文档
           </p>
         </div>
-        <Button className="gap-2" onClick={() => setShowCreate(!showCreate)}>
-          <Plus className="h-4 w-4" />新增文档
-        </Button>
+        <div className="flex gap-2">
+          <Button className="gap-2" onClick={() => setShowUpload(true)}>
+            <Upload className="h-4 w-4" />上传文档
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => setShowCreate(!showCreate)}>
+            <Plus className="h-4 w-4" />手动创建
+          </Button>
+        </div>
       </div>
 
       {/* 新建表单 */}
@@ -260,6 +268,15 @@ export default function StandardsPage() {
           )}
         </CardContent>
       </Card>
+      {/* 上传弹窗 */}
+      <UploadStandardDialog
+        open={showUpload}
+        onOpenChange={setShowUpload}
+        onSuccess={() => {
+          setLoading(true);
+          fetchDocs();
+        }}
+      />
     </div>
   );
 }
