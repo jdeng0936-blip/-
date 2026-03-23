@@ -32,7 +32,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                 Frontend (Next.js 15)                    │
+│                 Frontend (Next.js 16)                    │
 │          TypeScript · Tailwind CSS · Framer Motion       │
 ├─────────────────────────────────────────────────────────┤
 │                  Backend (FastAPI)                        │
@@ -49,7 +49,7 @@
 
 ### 前置条件
 
-- Python 3.11+ / Node.js 18+
+- Python 3.11+ / Node.js 20.9.0+（推荐使用 [nvm](https://github.com/nvm-sh/nvm) 管理）
 - PostgreSQL 16 + pgvector 扩展
 - Redis Stack
 
@@ -83,8 +83,8 @@ cp backend/.env.example backend/.env
 cd backend
 
 # 创建数据库 + pgvector 扩展
-psql -U postgres -c "CREATE DATABASE excavation_platform;"
-psql -U postgres -d excavation_platform -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql -h localhost -p 5433 -U postgres -c "CREATE DATABASE excavation_platform;"
+psql -h localhost -p 5433 -U postgres -d excavation_platform -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 # 运行迁移
 source venv/bin/activate
@@ -99,7 +99,9 @@ cd backend && source venv/bin/activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # 前端（终端 2）
-cd frontend && npm run dev
+cd frontend
+nvm use          # 自动读取 .nvmrc 切换到 Node 20
+npm run dev
 ```
 
 访问 http://localhost:3000 | API 文档 http://localhost:8000/docs
@@ -176,6 +178,18 @@ npm test
 | GET | `/api/v1/standards` | 标准库列表 |
 
 完整文档：http://localhost:8000/docs
+
+## 💾 数据库备份与恢复
+
+```bash
+# 备份（导出到 ./backups/ 目录）
+bash backend/scripts/db_backup.sh
+
+# 恢复（从指定 dump 文件恢复）
+bash backend/scripts/db_restore.sh ./backups/excavation_20260322_213000.dump
+```
+
+> ⚠️ 恢复操作会覆盖当前数据库！恢复后需重启后端服务以重建数据库连接。
 
 ## 📄 License
 

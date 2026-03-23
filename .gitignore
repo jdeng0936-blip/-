@@ -8,6 +8,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+venv/
+.venv/
 
 # 环境变量
 .env
@@ -35,3 +37,7 @@ generated/*.docx
 # 日志
 *.log
 backend/storage/outputs/
+
+# 数据库备份
+backups/
+*.dump

@@ -1,12 +1,17 @@
 """
 客户样本规程入库脚本 — 将客户提交的真实规程文件解析后写入知识库
 
-用法: python scripts/ingest_customer_samples.py
+用法:
+    # 指定样本文件目录
+    SAMPLE_DIR=/path/to/samples python scripts/ingest_customer_samples.py
+
+    # 或通过命令行参数
+    python scripts/ingest_customer_samples.py --dir /path/to/samples
 
 支持格式: .docx（python-docx直接读取）、.doc（textutil转换后读取）
 
 功能:
-  1. 扫描指定列表的客户规程文件
+  1. 扫描指定目录下的客户规程文件
   2. 提取全文文本，按章节切分
   3. 写入 std_document + std_clause 表，doc_type = '客户样本'
   4. 为后续 AI vs 人工对比提供基准数据
@@ -157,32 +162,69 @@ def parse_chapters(text: str, doc_title: str) -> list[dict]:
     return clauses
 
 
-# ========== 客户规程文件列表 ==========
+# ========== 客户规程文件扫描 ==========
 
-SAMPLE_FILES = [
-    {
-        "path": "/Users/mac111/Desktop/煤炭/15314进风巷规程文字部分1.25(1).doc",
-        "title": "15314进风巷掘进作业规程",
-    },
-    {
-        "path": "/Users/mac111/Desktop/煤炭/15404规程.doc",
-        "title": "15404工作面掘进作业规程",
-    },
-    {
-        "path": "/Users/mac111/Desktop/煤炭/470水平大巷运输作业规程（二矿大巷运输队）.docx",
-        "title": "470水平大巷运输作业规程",
-    },
-]
+# 默认目录（可通过环境变量 SAMPLE_DIR 或命令行 --dir 覆盖）
+DEFAULT_SAMPLE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "customer_samples"
+)
+
+
+def scan_sample_files(sample_dir: str) -> list[dict]:
+    """
+    扫描目录下的 .doc / .docx 文件，自动生成入库列表
+
+    文件名将作为文档标题（去掉扩展名）
+    """
+    if not os.path.isdir(sample_dir):
+        print(f"❌ 样本目录不存在: {sample_dir}")
+        print(f"   请将客户规程文件放入此目录，或通过 --dir 指定路径")
+        return []
+
+    files = []
+    for fname in sorted(os.listdir(sample_dir)):
+        ext = os.path.splitext(fname)[1].lower()
+        if ext in (".doc", ".docx"):
+            title = os.path.splitext(fname)[0]
+            files.append({
+                "path": os.path.join(sample_dir, fname),
+                "title": title,
+            })
+
+    if not files:
+        print(f"⚠️ 目录 {sample_dir} 下未找到 .doc/.docx 文件")
+
+    return files
 
 
 async def main():
+    import argparse
     from sqlalchemy import text
     from app.core.database import engine
+
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="客户样本规程入库")
+    parser.add_argument(
+        "--dir",
+        default=os.getenv("SAMPLE_DIR", DEFAULT_SAMPLE_DIR),
+        help="客户规程文件所在目录（默认: backend/data/customer_samples/）",
+    )
+    args = parser.parse_args()
+
+    # 动态扫描目录
+    sample_files = scan_sample_files(args.dir)
+    if not sample_files:
+        print("没有找到可入库的文件，退出。")
+        sys.exit(1)
+
+    print(f"📂 样本目录: {args.dir}")
+    print(f"📄 找到 {len(sample_files)} 个文件")
 
     total_clauses = 0
 
     async with engine.begin() as conn:
-        for sample in SAMPLE_FILES:
+        for sample in sample_files:
             if not os.path.exists(sample["path"]):
                 print(f"❌ 文件不存在: {sample['path']}")
                 continue
@@ -265,3 +307,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+

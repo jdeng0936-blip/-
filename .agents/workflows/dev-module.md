@@ -97,7 +97,6 @@ docker compose build --no-cache web && docker compose up -d web
 
 // turbo
 ```bash
-cd /Users/imac2026/Desktop/掘进工作面规程智能生成平台
 git add -A && git commit -m "feat(MODULE): 模块描述" && git push origin main
 ```
 

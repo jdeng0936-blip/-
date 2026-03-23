@@ -10,8 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python 依赖
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir google-genai>=1.0.0
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 应用代码
 COPY . .

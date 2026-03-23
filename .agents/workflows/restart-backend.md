@@ -12,7 +12,6 @@ description: 重启后端服务（先杀旧进程再启动新实例）
 
 1. 重启后端容器：
 ```bash
-cd /Users/imac2026/Desktop/掘进工作面规程智能生成平台
 docker compose restart api
 ```
 
@@ -45,8 +44,7 @@ sleep 2
 
 4. 启动新的 uvicorn 实例：
 ```bash
-cd /Users/imac2026/Desktop/掘进工作面规程智能生成平台/backend
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+cd ./backend && source venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 5. 验证只有一个进程监听 8000：

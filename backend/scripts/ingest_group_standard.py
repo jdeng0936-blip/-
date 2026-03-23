@@ -194,11 +194,21 @@ def parse_document(text: str) -> list[dict]:
 
 
 async def main():
+    import argparse
     from sqlalchemy import text
     from app.core.database import engine
 
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="集团规范结构化入库")
+    parser.add_argument(
+        "--file",
+        default=os.getenv("GROUP_STANDARD_FILE", "/tmp/caijueyun_full.txt"),
+        help="全文文本文件路径（默认: /tmp/caijueyun_full.txt 或 GROUP_STANDARD_FILE 环境变量）",
+    )
+    args = parser.parse_args()
+    txt_path = args.file
+
     # 读取全文
-    txt_path = "/tmp/caijueyun_full.txt"
     if not os.path.exists(txt_path):
         print(f"❌ 文件不存在: {txt_path}")
         print("  请先运行 PDF 提取步骤生成此文件")

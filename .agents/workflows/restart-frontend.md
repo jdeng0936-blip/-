@@ -8,12 +8,12 @@ description: 重启前端服务（自动清理端口占用和 lock 文件）
 
 1. 杀掉占用 3000 端口的旧进程并清理 lock 文件
 ```bash
-kill -9 $(lsof -t -i:3000) 2>/dev/null; rm -f /Users/mac111/Desktop/煤炭/frontend/.next/dev/lock; echo "port 3000 cleared, lock removed"
+kill -9 $(lsof -t -i:3000) 2>/dev/null; rm -f ./frontend/.next/dev/lock; echo "port 3000 cleared, lock removed"
 ```
 
-2. 启动前端 dev server
+2. 切换 Node 版本并启动前端 dev server
 ```bash
-cd /Users/mac111/Desktop/煤炭/frontend && npm run dev
+source ~/.nvm/nvm.sh && nvm use && cd ./frontend && npm run dev
 ```
 
 3. 确认输出包含 `✓ Ready` 即表示启动成功
